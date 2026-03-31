@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overschot Dashboard — Weekanalyse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161d;
+    --surface2: #1a1e28;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --accent: #4f9cf9;
+    --accent2: #f97b4f;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+    --success: #22c55e;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .logo {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -.3px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .pulse { display: flex; align-items: center; gap: 6px; }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+  #last-updated { color: var(--muted); }
+
+  /* ── Layout ── */
+  main { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Loading ── */
+  #loading {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; gap: 16px; color: var(--muted); font-size: 12px;
+  }
+  .spinner {
+    width: 32px; height: 32px; border: 2px solid var(--border2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #error-msg {
+    display: none; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+    border-radius: 8px; padding: 16px 20px; color: #fca5a5; font-size: 13px; margin-bottom: 20px;
+  }
+  #dashboard { display: none; }
+
+  /* ── KPI row ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--kpi-accent, var(--accent));
+  }
+  .kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .kpi-value { font-family: var(--font-head); font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Filters ── */
+  .filter-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+  }
+  .filter-bar label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .filter-bar select, .filter-bar input[type=text] {
+    background: var(--bg); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--font-mono); font-size: 12px;
+    border-radius: 6px; padding: 6px 10px; outline: none;
+  }
+  .filter-bar select:focus, .filter-bar input:focus { border-color: var(--accent); }
+  .filter-bar input[type=text] { min-width: 180px; flex: 1; }
+  .filter-bar .sep { width: 1px; height: 20px; background: var(--border2); }
+
+  /* ── Charts row ── */
+  .charts-row {
+    display: grid;
+    grid-template-columns: minmax(0,1.5fr) minmax(0,1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px;
+  }
+  .card-title {
+    font-family: var(--font-head); font-size: 12px; font-weight: 500;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    margin-bottom: 14px;
+  }
+  .chart-wrap { position: relative; }
+
+  /* ── Legend ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; font-size: 11px; color: var(--muted); }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .leg-sq { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Table ── */
+  .table-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+  }
+  .table-count { font-size: 11px; color: var(--muted); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { border-bottom: 1px solid var(--border2); }
+  th {
+    text-align: left; font-size: 10px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em;
+    padding: 8px 10px; white-space: nowrap; cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--text); }
+  th.sort-asc::after { content: ' ↑'; color: var(--accent); }
+  th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+  td {
+    padding: 9px 10px; border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text); white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.025); }
+  .sku-cell { font-size: 10px; color: var(--muted); }
+  .val-cell { font-weight: 500; color: var(--text); }
+  .badge {
+    display: inline-block; font-size: 10px; font-weight: 500;
+    padding: 2px 7px; border-radius: 20px; border: 1px solid;
+  }
+  .badge-hoog  { color: #fca5a5; border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.1); }
+  .badge-middel{ color: #fcd34d; border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.1); }
+  .badge-laag  { color: #86efac; border-color: rgba(34,197,94,.4); background: rgba(34,197,94,.1); }
+
+
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 580px) {
+    main { padding: 16px; }
+    header { padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Overschot Analyse
+  </div>
+  <div class="header-meta">
+    <div class="pulse">
+      <div class="pulse-dot"></div>
+      <span>Live data</span>
+    </div>
+    <span id="last-updated">Laden...</span>
+    <span id="week-badge" style="background:rgba(79,156,249,.12);color:var(--accent);padding:3px 10px;border-radius:20px;font-size:11px;border:1px solid rgba(79,156,249,.2)"></span>
+  </div>
+</header>
+
+<main>
+
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Data ophalen uit Google Sheets...</span>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <div id="dashboard">
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpis"></div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <label>Zoek</label>
+      <input type="text" id="search" placeholder="SKU of omschrijving...">
+      <div class="sep"></div>
+      <label>Productgroep</label>
+      <select id="f-groep"><option value="">Alle</option></select>
+      <div class="sep"></div>
+      <label>Min. waarde</label>
+      <select id="f-minval">
+        <option value="0">Alle</option>
+        <option value="10000">€ 10k+</option>
+        <option value="25000">€ 25k+</option>
+        <option value="50000">€ 50k+</option>
+      </select>
+      <div class="sep"></div>
+      <label>Risico</label>
+      <select id="f-risico">
+        <option value="">Alle</option>
+        <option value="hoog">Hoog (4+ wk)</option>
+        <option value="middel">Middel (3 wk)</option>
+        <option value="laag">Laag (≤2 wk)</option>
+      </select>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-title">Top 10 SKUs — overschotwaarde</div>
+        <div class="legend">
+          <span><span class="leg-sq" style="background:#4f9cf9"></span>Normaal</span>
+          <span><span class="leg-sq" style="background:#ef4444"></span>Hoog risico (4+ wk)</span>
+        </div>
+        <div class="chart-wrap" style="height:300px"><canvas id="barChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Verdeling per productgroep</div>
+        <div id="pie-legend" class="legend"></div>
+        <div class="chart-wrap" style="height:270px"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+      <div class="table-header">
+        <div style="font-family:var(--font-head);font-size:13px;font-weight:500">SKU overzicht</div>
+        <div class="table-count" id="tcount"></div>
+      </div>
+      <div class="table-scroll">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th data-col="sku">SKU</th>
+              <th data-col="omschrijving">Omschrijving</th>
+              <th data-col="productgroep">Productgroep</th>
+              <th data-col="totaalwaarde_overschot" style="text-align:right">Waarde overschot</th>
+              <th data-col="verwacht_overschot_stuks" style="text-align:right">Stuks overschot</th>
+              <th data-col="aaneengesloten_weken_overschot" style="text-align:right">Weken</th>
+              <th data-col="aandeel_NL_pct" style="text-align:right">NL%</th>
+              <th data-col="aandeel_DE_pct" style="text-align:right">DE%</th>
+              <th>Risico</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+</main>
+
+<script>
+// ══════════════════════════════════════════════════
+//  ▶ AANPASSEN: vervang dit door jouw echte Sheet ID
+// ══════════════════════════════════════════════════
+const SHEET_ID = '1pAVSc1bvEiJYmUGdqCuTLY8r2OKXNZnmTNRrEOGVYdA';
+const SHEET_TAB = 'analyse_overschot';
+// ══════════════════════════════════════════════════
+
+const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_TAB)}`;
+
+let allData = [];
+let sortCol = 'totaalwaarde_overschot';
+let sortDir = 'desc';
+let barChart, pieChart;
+
+// ── Fetch & parse Google Sheets ──────────────────
+async function loadData() {
+  try {
+    const resp = await fetch(API_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const json = JSON.parse(text.replace(/^.*?({.*}).*$/s, '$1'));
+    allData = parseGviz(json);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('last-updated').textContent = 'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'});
+    const wk = allData[0]?.weeknummer;
+    if (wk) document.getElementById('week-badge').textContent = 'Week ' + wk;
+    populateFilters();
+    render();
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    const el = document.getElementById('error-msg');
+    el.style.display = 'block';
+    el.textContent = `Kon data niet laden. Controleer of het Sheet ID correct is en de spreadsheet publiek leesbaar is. (${e.message})`;
+  }
+}
+
+function parseGviz(json) {
+  const cols = json.table.cols.map(c => c.label);
+  return (json.table.rows || []).map(row => {
+    const obj = {};
+    row.c.forEach((cell, i) => {
+      let v = cell ? cell.v : null;
+      if (typeof v === 'string') v = v.replace(',', '.').trim();
+      const num = parseFloat(v);
+      obj[cols[i]] = isNaN(num) && v !== null ? v : (isNaN(num) ? null : num);
+    });
+    return obj;
+  }).filter(r => r.sku && r.totaalwaarde_overschot > 0);
+}
+
+// ── Helpers ──────────────────────────────────────
+const fmt = v => '€\u202F' + Math.round(v).toLocaleString('nl-NL');
+const risk = w => w >= 4 ? 'hoog' : w >= 3 ? 'middel' : 'laag';
+
+function filtered() {
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const gr = document.getElementById('f-groep').value;
+  const mv = +document.getElementById('f-minval').value;
+  const ri = document.getElementById('f-risico').value;
+  return allData.filter(r =>
+    (!q || r.sku?.toLowerCase().includes(q) || r.omschrijving?.toLowerCase().includes(q)) &&
+    (!gr || r.productgroep === gr) &&
+    (!mv || r.totaalwaarde_overschot >= mv) &&
+    (!ri || risk(r.aaneengesloten_weken_overschot) === ri)
+  );
+}
+
+function sortedData(data) {
+  return [...data].sort((a, b) => {
+    let av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+}
+
+// ── Populate filter dropdowns ────────────────────
+function populateFilters() {
+  const groups = [...new Set(allData.map(r => r.productgroep).filter(Boolean))].sort();
+  const sel = document.getElementById('f-groep');
+  groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o); });
+}
+
+// ── KPIs ─────────────────────────────────────────
+function renderKPIs(data) {
+  const total = data.reduce((s, r) => s + (r.totaalwaarde_overschot || 0), 0);
+  const stuks = data.reduce((s, r) => s + (r.verwacht_overschot_stuks || 0), 0);
+  const hoog = data.filter(r => r.aaneengesloten_weken_overschot >= 4).length;
+  const nulVerkoop = data.filter(r => !r.verkopen_NL && !r.verkopen_DE && !r.verkopen_FR).length;
+
+  document.getElementById('kpis').innerHTML = [
+    { label: 'Totale overschotwaarde', val: fmt(total), sub: `${data.length} SKUs`, accent: '#4f9cf9' },
+    { label: 'Verwacht overschot stuks', val: stuks.toLocaleString('nl-NL'), sub: 'komende periode', accent: '#f97b4f' },
+    { label: 'Hoog risico', val: hoog, sub: '4+ aaneengesloten weken', accent: '#ef4444' },
+    { label: 'Geen verkopen', val: nulVerkoop, sub: 'NL, DE én FR = 0', accent: '#f59e0b' },
+  ].map(k => `
+    <div class="kpi" style="--kpi-accent:${k.accent}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.val}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>
+  `).join('');
+}
+
+// ── Bar chart ────────────────────────────────────
+function renderBar(data) {
+  const top10 = sortedData(data).slice(0, 10);
+  const labels = top10.map(r => r.omschrijving?.length > 30 ? r.omschrijving.slice(0, 30) + '…' : r.omschrijving);
+  const vals = top10.map(r => r.totaalwaarde_overschot);
+  const colors = top10.map(r => r.aaneengesloten_weken_overschot >= 4 ? '#ef4444' : '#4f9cf9');
+
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderRadius: 4, borderSkipped: false }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) }, backgroundColor: '#1a1e28', titleColor: '#9ca3af', bodyColor: '#e8eaf0', borderColor: 'rgba(255,255,255,.1)', borderWidth: 1 }
+      },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { family: "'DM Mono'", size: 11 }, callback: v => '€' + Math.round(v/1000) + 'k' }, grid: { color: 'rgba(255,255,255,.04)' }, border: { color: 'rgba(255,255,255,.07)' } },
+        y: { ticks: { color: '#9ca3af', font: { family: "'DM Mono'", size: 11 } }, grid: { display: false }, border: { color: 'rgba(255,255,255,.07)' } }
+      }
+    }
+  });
+}
+
+// ── Pie chart ────────────────────────────────────
+const PIE_COLORS = ['#4f9cf9','#f97b4f','#22c55e','#a78bfa','#f59e0b','#ec4899','#14b8a6','#ef4444','#84cc16'];
+
+function renderPie(data) {
+  const byGroup = {};
+  data.forEach(r => { byGroup[r.productgroep] = (byGroup[r.productgroep] || 0) + r.totaalwaarde_overschot; });
+  const labels = Object.keys(byGroup).sort((a, b) => byGroup[b] - byGroup[a]);
+  const vals = labels.map(k => byGroup[k]);
+  const total = vals.reduce((a, b) => a + b, 0);
+
+  document.getElementById('pie-legend').innerHTML = labels.map((l, i) =>
+    `<span><span class="leg-sq" style="background:${PIE_COLORS[i % PIE_COLORS.length]}"></span>${l}</span>`
+  ).join('');
+
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: vals, backgroundColor: PIE_COLORS.slice(0, labels.length), borderWidth: 0, hoverOffset: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} (${Math.round(ctx.raw/total*100)}%)` },
+          backgroundColor: '#1a1e28', titleColor: '#9ca3af', bodyColor: '#e8eaf0',
+          borderColor: 'rgba(255,255,255,.1)', borderWidth: 1
+        }
+      }
+    }
+  });
+}
+
+// ── Table ─────────────────────────────────────────
+function renderTable(data) {
+  const rows = sortedData(data);
+  document.getElementById('tcount').textContent = rows.length + ' SKUs';
+  document.getElementById('tbody').innerHTML = rows.map(r => {
+    const r_ = risk(r.aaneengesloten_weken_overschot);
+    return `<tr>
+      <td class="sku-cell">${r.sku ?? ''}</td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${(r.omschrijving?.length > 44 ? r.omschrijving.slice(0,44)+'…' : r.omschrijving) ?? ''}</td>
+      <td style="color:var(--muted)">${r.productgroep ?? ''}</td>
+      <td class="val-cell" style="text-align:right">${fmt(r.totaalwaarde_overschot)}</td>
+      <td style="text-align:right">${(r.verwacht_overschot_stuks ?? 0).toLocaleString('nl-NL')}</td>
+      <td style="text-align:right">${r.aaneengesloten_weken_overschot ?? ''}</td>
+      <td style="text-align:right">${(r.aandeel_NL_pct ?? 0).toFixed(0)}%</td>
+      <td style="text-align:right">${(r.aandeel_DE_pct ?? 0).toFixed(0)}%</td>
+      <td><span class="badge badge-${r_}">${r_}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Sort handlers ─────────────────────────────────
+document.querySelectorAll('th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = col; sortDir = 'desc'; }
+    document.querySelectorAll('th').forEach(t => t.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    render();
+  });
+});
+
+// ── Filter handlers ───────────────────────────────
+['search','f-groep','f-minval','f-risico'].forEach(id => {
+  document.getElementById(id).addEventListener('input', render);
+  document.getElementById(id).addEventListener('change', render);
+});
+
+// ── Master render ─────────────────────────────────
+function render() {
+  const data = filtered();
+  renderKPIs(data);
+  renderBar(data);
+  renderPie(data);
+  renderTable(data);
+}
+
+// ── Auto-refresh elke 5 minuten ───────────────────
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
