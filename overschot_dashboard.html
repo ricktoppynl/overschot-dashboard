@@ -286,7 +286,8 @@
             <tr>
               <th data-col="sku">SKU</th>
               <th data-col="omschrijving">Omschrijving</th>
-              <th data-col="productgroep">Productgroep</th>
+              <th data-col="productgroep">Hoofdgroep</th>
+              <th>Categorie</th>
               <th data-col="beschikbaar" style="text-align:right">Beschikbaar</th>
               <th id="th-overschot-stuks" style="text-align:right">Overschot stuks</th>
               <th id="th-overschot-waarde" data-col="totaalwaarde_overschot" style="text-align:right">Waarde overschot</th>
@@ -558,6 +559,7 @@ function renderTable(data) {
       <td class="sku-cell">${r.sku ?? ''}</td>
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${omschr}">${omschrShort}</td>
       <td style="color:var(--muted);white-space:nowrap">${pg}</td>
+      <td style="color:var(--muted);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.productgroep ?? ''}">${r.productgroep ?? ''}</td>
       <td style="text-align:right;color:var(--muted)">${beschikbaar.toLocaleString('nl-NL')}</td>
       <td style="text-align:right">${overschotStuks.toLocaleString('nl-NL')}</td>
       <td class="val-cell" style="text-align:right">${fmt(overschotWaarde)}</td>
