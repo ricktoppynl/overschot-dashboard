@@ -234,8 +234,10 @@
       <label>Zoek</label>
       <input type="text" id="search" placeholder="SKU of omschrijving...">
       <div class="sep"></div>
-      <label>Productgroep</label>
+      <label>Hoofdgroep</label>
       <select id="f-groep"><option value="">Alle</option></select>
+      <label>Subcategorie</label>
+      <select id="f-sub"><option value="">Alle</option></select>
       <div class="sep"></div>
       <label>Min. waarde</label>
       <select id="f-minval">
@@ -268,7 +270,7 @@
         <div class="chart-wrap" style="height:300px"><canvas id="barChart"></canvas></div>
       </div>
       <div class="card">
-        <div class="card-title">Verdeling per productgroep</div>
+        <div class="card-title">Verdeling per hoofdgroep</div>
         <div id="pie-legend" class="legend"></div>
         <div class="chart-wrap" style="height:270px"><canvas id="pieChart"></canvas></div>
       </div>
@@ -278,7 +280,10 @@
     <div class="card">
       <div class="table-header">
         <div style="font-family:var(--font-head);font-size:13px;font-weight:500">SKU overzicht</div>
-        <div class="table-count" id="tcount"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="table-count" id="tcount"></div>
+          <button onclick="exportCSV()" style="background:var(--bg);border:1px solid var(--border2);color:var(--muted);font-family:var(--font-mono);font-size:11px;padding:5px 12px;border-radius:6px;cursor:pointer;white-space:nowrap">↓ Export CSV</button>
+        </div>
       </div>
       <div class="table-scroll">
         <table id="tbl">
@@ -286,8 +291,6 @@
             <tr>
               <th data-col="sku">SKU</th>
               <th data-col="omschrijving">Omschrijving</th>
-              <th data-col="productgroep">Hoofdgroep</th>
-              <th>Categorie</th>
               <th data-col="beschikbaar" style="text-align:right">Beschikbaar</th>
               <th id="th-overschot-stuks" style="text-align:right">Overschot stuks</th>
               <th id="th-overschot-waarde" data-col="totaalwaarde_overschot" style="text-align:right">Waarde overschot</th>
@@ -383,11 +386,13 @@ const risk = w => w >= 4 ? 'hoog' : w >= 3 ? 'middel' : 'laag';
 function filtered() {
   const q = (document.getElementById('search').value || '').toLowerCase();
   const gr = document.getElementById('f-groep').value;
+  const sub = document.getElementById('f-sub').value;
   const mv = +document.getElementById('f-minval').value;
   const ri = document.getElementById('f-risico').value;
   return allData.filter(r =>
     (!q || r.sku?.toLowerCase().includes(q) || r.omschrijving?.toLowerCase().includes(q)) &&
     (!gr || getMainGroup(r.productgroep) === gr) &&
+    (!sub || getSubGroup(r.productgroep) === sub) &&
     (!mv || r.totaalwaarde_overschot >= mv) &&
     (!ri || risk(r.aaneengesloten_weken_overschot) === ri)
   );
@@ -405,10 +410,19 @@ function sortedData(data) {
 function getMainGroup(pg) {
   return pg ? pg.split('|')[0].trim() : '';
 }
+function getSubGroup(pg) {
+  if (!pg) return '';
+  const parts = pg.split('|');
+  return parts.length > 1 ? parts[1].trim() : '';
+}
 function populateFilters() {
   const groups = [...new Set(allData.map(r => getMainGroup(r.productgroep)).filter(Boolean))].sort();
   const sel = document.getElementById('f-groep');
   groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o); });
+
+  const subs = [...new Set(allData.map(r => getSubGroup(r.productgroep)).filter(Boolean))].sort();
+  const selSub = document.getElementById('f-sub');
+  subs.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; selSub.appendChild(o); });
 }
 
 // ── KPIs ─────────────────────────────────────────
@@ -464,7 +478,10 @@ const PIE_COLORS = ['#4f9cf9','#f97b4f','#22c55e','#a78bfa','#f59e0b','#ec4899',
 
 function renderPie(data) {
   const byGroup = {};
-  data.forEach(r => { byGroup[r.productgroep] = (byGroup[r.productgroep] || 0) + r.totaalwaarde_overschot; });
+  data.forEach(r => {
+    const hg = getMainGroup(r.productgroep);
+    byGroup[hg] = (byGroup[hg] || 0) + r.totaalwaarde_overschot;
+  });
   const labels = Object.keys(byGroup).sort((a, b) => byGroup[b] - byGroup[a]);
   const vals = labels.map(k => byGroup[k]);
   const total = vals.reduce((a, b) => a + b, 0);
@@ -558,8 +575,6 @@ function renderTable(data) {
     return `<tr style="${rowStyle}">
       <td class="sku-cell">${r.sku ?? ''}</td>
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${omschr}">${omschrShort}</td>
-      <td style="color:var(--muted);white-space:nowrap">${pg}</td>
-      <td style="color:var(--muted);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.productgroep ?? ''}">${r.productgroep ?? ''}</td>
       <td style="text-align:right;color:var(--muted)">${beschikbaar.toLocaleString('nl-NL')}</td>
       <td style="text-align:right">${overschotStuks.toLocaleString('nl-NL')}</td>
       <td class="val-cell" style="text-align:right">${fmt(overschotWaarde)}</td>
@@ -587,7 +602,7 @@ document.querySelectorAll('th[data-col]').forEach(th => {
 });
 
 // ── Filter handlers ───────────────────────────────
-['search','f-groep','f-minval','f-risico'].forEach(id => {
+['search','f-groep','f-sub','f-minval','f-risico'].forEach(id => {
   document.getElementById(id).addEventListener('input', render);
   document.getElementById(id).addEventListener('change', render);
 });
@@ -599,6 +614,44 @@ function render() {
   renderBar(data);
   renderPie(data);
   renderTable(data);
+}
+
+// ── CSV Export ───────────────────────────────────
+function exportCSV() {
+  const data = filtered();
+  const rows = sortedData(data);
+  const wk = rows[0]?.weeknummer ?? '';
+  const cols = [
+    'SKU','Omschrijving','Productgroep','Beschikbaar',
+    'Overschot stuks (2wk)','Waarde overschot (2wk)',
+    'Overschot stuks (4wk)','Waarde overschot (4wk)',
+    '% v. voorraad','Weken overschot',
+    'Verkopen NL','Verkopen DE','Verkopen FR',
+    'Trend %','Risico'
+  ];
+  const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [cols.map(esc).join(',')];
+  rows.forEach(r => {
+    const beschikbaar = r.beschikbaar ?? 0;
+    const stuks2 = r.verwacht_overschot_stuks ?? 0;
+    const pct = beschikbaar > 0 ? ((stuks2 / beschikbaar) * 100).toFixed(1) + '%' : '';
+    const huidig = r.totaalwaarde_overschot ?? 0;
+    const vorig = parseFloat(r.totaalwaarde_vorige_week);
+    const trend = (!vorig || isNaN(vorig)) ? '' : ((huidig - vorig) / vorig * 100).toFixed(1) + '%';
+    lines.push([
+      r.sku, r.omschrijving, r.productgroep, beschikbaar,
+      stuks2, huidig,
+      r.verwacht_overschot_stuks_4wk ?? 0, r.totaalwaarde_overschot_4wk ?? 0,
+      pct, r.aaneengesloten_weken_overschot ?? 0,
+      r.verkopen_NL ?? 0, r.verkopen_DE ?? 0, r.verkopen_FR ?? 0,
+      trend, risk(r.aaneengesloten_weken_overschot)
+    ].map(esc).join(','));
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'overschot_week' + wk + '.csv'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Auto-refresh elke 5 minuten ───────────────────
