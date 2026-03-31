@@ -339,17 +339,28 @@ async function loadData() {
 }
 
 function parseGviz(json) {
-  const cols = json.table.cols.map(c => c.label);
+  const fieldMap = {
+    0: 'sku', 1: 'omschrijving', 2: 'productgroep',
+    3: 'beschikbaar', 4: 'verwacht_verbruik', 5: 'verwacht_overschot_stuks',
+    6: 'inkoopprijs', 7: 'totaalwaarde_overschot',
+    8: 'totaalwaarde_vorige_week', 9: 'ontwikkeling_pct',
+    10: 'aaneengesloten_weken_overschot',
+    16: 'verkopen_NL', 17: 'verkopen_DE', 18: 'verkopen_FR',
+    21: 'aandeel_NL_pct', 22: 'aandeel_DE_pct', 23: 'aandeel_FR_pct',
+    26: 'weeknummer'
+  };
   return (json.table.rows || []).map(row => {
     const obj = {};
     row.c.forEach((cell, i) => {
+      const key = fieldMap[i];
+      if (!key) return;
       let v = cell ? cell.v : null;
       if (typeof v === 'string') v = v.replace(',', '.').trim();
       const num = parseFloat(v);
-      obj[cols[i]] = isNaN(num) && v !== null ? v : (isNaN(num) ? null : num);
+      obj[key] = isNaN(num) && v !== null ? v : (isNaN(num) ? null : num);
     });
     return obj;
-  }).filter(r => r.sku && r.totaalwaarde_overschot > 0);
+  }).filter(r => r.sku && r.sku !== 'TOTAAL' && r.totaalwaarde_overschot > 0);
 }
 
 // ── Helpers ──────────────────────────────────────
