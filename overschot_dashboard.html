@@ -253,6 +253,9 @@
         <option value="laag">Laag (≤2 wk)</option>
       </select>
     </div>
+    <div class="sep"></div>
+    <button id="btn-4wk" onclick="toggle4wk()" style="background:var(--bg);border:1px solid var(--border2);color:var(--muted);font-family:var(--font-mono);font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:all .15s">Toon: 2 weken</button>
+  </div>
 
     <!-- Charts -->
     <div class="charts-row">
@@ -284,11 +287,15 @@
               <th data-col="sku">SKU</th>
               <th data-col="omschrijving">Omschrijving</th>
               <th data-col="productgroep">Productgroep</th>
-              <th data-col="totaalwaarde_overschot" style="text-align:right">Waarde overschot</th>
-              <th data-col="verwacht_overschot_stuks" style="text-align:right">Stuks overschot</th>
+              <th data-col="beschikbaar" style="text-align:right">Beschikbaar</th>
+              <th id="th-overschot-stuks" style="text-align:right">Overschot stuks</th>
+              <th id="th-overschot-waarde" data-col="totaalwaarde_overschot" style="text-align:right">Waarde overschot</th>
+              <th style="text-align:right">% v. voorraad</th>
+              <th style="text-align:right">Trend</th>
               <th data-col="aaneengesloten_weken_overschot" style="text-align:right">Weken</th>
-              <th data-col="aandeel_NL_pct" style="text-align:right">NL%</th>
-              <th data-col="aandeel_DE_pct" style="text-align:right">DE%</th>
+              <th style="text-align:right">NL</th>
+              <th style="text-align:right">DE</th>
+              <th style="text-align:right">FR</th>
               <th>Risico</th>
             </tr>
           </thead>
@@ -311,6 +318,7 @@ const SHEET_TAB = 'analyse_overschot';
 const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_TAB)}`;
 
 let allData = [];
+let view4wk = false;
 let sortCol = 'totaalwaarde_overschot';
 let sortDir = 'desc';
 let barChart, pieChart;
@@ -345,8 +353,12 @@ function parseGviz(json) {
     6: 'inkoopprijs', 7: 'totaalwaarde_overschot',
     8: 'totaalwaarde_vorige_week', 9: 'ontwikkeling_pct',
     10: 'aaneengesloten_weken_overschot',
+    13: 'verwacht_verbruik_4wk', 14: 'verwacht_overschot_stuks_4wk',
+    15: 'totaalwaarde_overschot_4wk',
     16: 'verkopen_NL', 17: 'verkopen_DE', 18: 'verkopen_FR',
+    19: 'verkopen_webshop', 20: 'verkopen_marketplace',
     21: 'aandeel_NL_pct', 22: 'aandeel_DE_pct', 23: 'aandeel_FR_pct',
+    24: 'aandeel_webshop_pct', 25: 'aandeel_marketplace_pct',
     26: 'weeknummer'
   };
   return (json.table.rows || []).map(row => {
@@ -374,7 +386,7 @@ function filtered() {
   const ri = document.getElementById('f-risico').value;
   return allData.filter(r =>
     (!q || r.sku?.toLowerCase().includes(q) || r.omschrijving?.toLowerCase().includes(q)) &&
-    (!gr || r.productgroep === gr) &&
+    (!gr || getMainGroup(r.productgroep) === gr) &&
     (!mv || r.totaalwaarde_overschot >= mv) &&
     (!ri || risk(r.aaneengesloten_weken_overschot) === ri)
   );
@@ -389,8 +401,11 @@ function sortedData(data) {
 }
 
 // ── Populate filter dropdowns ────────────────────
+function getMainGroup(pg) {
+  return pg ? pg.split('|')[0].trim() : '';
+}
 function populateFilters() {
-  const groups = [...new Set(allData.map(r => r.productgroep).filter(Boolean))].sort();
+  const groups = [...new Set(allData.map(r => getMainGroup(r.productgroep)).filter(Boolean))].sort();
   const sel = document.getElementById('f-groep');
   groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o); });
 }
@@ -402,9 +417,11 @@ function renderKPIs(data) {
   const hoog = data.filter(r => r.aaneengesloten_weken_overschot >= 4).length;
   const nulVerkoop = data.filter(r => !r.verkopen_NL && !r.verkopen_DE && !r.verkopen_FR).length;
 
+  const totaalBeschikbaar = data.reduce((s, r) => s + (r.beschikbaar || 0), 0);
+  const pctOverschot = totaalBeschikbaar > 0 ? ((stuks / totaalBeschikbaar) * 100).toFixed(1) + '%' : '—';
   document.getElementById('kpis').innerHTML = [
-    { label: 'Totale overschotwaarde', val: fmt(total), sub: `${data.length} SKUs`, accent: '#4f9cf9' },
-    { label: 'Verwacht overschot stuks', val: stuks.toLocaleString('nl-NL'), sub: 'komende periode', accent: '#f97b4f' },
+    { label: view4wk ? 'Totale overschotwaarde (4wk)' : 'Totale overschotwaarde', val: view4wk ? fmt(data.reduce((s,r)=>s+(r.totaalwaarde_overschot_4wk||0),0)) : fmt(total), sub: `${data.length} SKUs`, accent: '#4f9cf9' },
+    { label: view4wk ? 'Overschot stuks (4wk)' : 'Overschot stuks', val: (view4wk ? data.reduce((s,r)=>s+(r.verwacht_overschot_stuks_4wk||0),0) : stuks).toLocaleString('nl-NL'), sub: `${pctOverschot} van totale voorraad`, accent: '#f97b4f' },
     { label: 'Hoog risico', val: hoog, sub: '4+ aaneengesloten weken', accent: '#ef4444' },
     { label: 'Geen verkopen', val: nulVerkoop, sub: 'NL, DE én FR = 0', accent: '#f59e0b' },
   ].map(k => `
@@ -475,20 +492,81 @@ function renderPie(data) {
 }
 
 // ── Table ─────────────────────────────────────────
+function trendCell(r) {
+  const huidig = r.totaalwaarde_overschot;
+  const vorig = parseFloat(r.totaalwaarde_vorige_week);
+  if (!vorig || isNaN(vorig) || vorig === 0) return '<td style="text-align:right;color:var(--muted)">—</td>';
+  const pct = ((huidig - vorig) / vorig * 100);
+  const verbeterd = pct < 0;
+  const kleur = verbeterd ? '#22c55e' : '#ef4444';
+  const pijl = verbeterd ? '↓' : '↑';
+  const label = Math.abs(pct).toFixed(1) + '%';
+  return `<td style="text-align:right;color:${kleur};font-weight:500">${pijl} ${label}</td>`;
+}
+
+function geenVerkopen(r) {
+  return (r.verkopen_NL ?? 0) === 0 && (r.verkopen_DE ?? 0) === 0 && (r.verkopen_FR ?? 0) === 0;
+}
+
+function toggle4wk() {
+  view4wk = !view4wk;
+  const btn = document.getElementById('btn-4wk');
+  btn.textContent = view4wk ? 'Toon: 4 weken' : 'Toon: 2 weken';
+  btn.style.color = view4wk ? 'var(--accent)' : 'var(--muted)';
+  btn.style.borderColor = view4wk ? 'var(--accent)' : 'var(--border2)';
+  const thStuks = document.getElementById('th-overschot-stuks');
+  const thWaarde = document.getElementById('th-overschot-waarde');
+  if (thStuks) thStuks.textContent = view4wk ? 'Overschot stuks (4wk)' : 'Overschot stuks';
+  if (thWaarde) thWaarde.textContent = view4wk ? 'Waarde overschot (4wk)' : 'Waarde overschot';
+  render();
+}
+
 function renderTable(data) {
   const rows = sortedData(data);
   document.getElementById('tcount').textContent = rows.length + ' SKUs';
   document.getElementById('tbody').innerHTML = rows.map(r => {
     const r_ = risk(r.aaneengesloten_weken_overschot);
-    return `<tr>
+    const geenVerk = geenVerkopen(r);
+    const rowStyle = geenVerk ? 'background:rgba(239,68,68,0.07);' : '';
+    const pg = getMainGroup(r.productgroep);
+    const omschr = r.omschrijving ?? '';
+    const omschrShort = omschr.length > 44 ? omschr.slice(0,44) + '…' : omschr;
+
+    // 2wk vs 4wk values
+    const overschotStuks = view4wk
+      ? (r.verwacht_overschot_stuks_4wk ?? 0)
+      : (r.verwacht_overschot_stuks ?? 0);
+    const overschotWaarde = view4wk
+      ? (r.totaalwaarde_overschot_4wk ?? 0)
+      : (r.totaalwaarde_overschot ?? 0);
+
+    // % van voorraad
+    const beschikbaar = r.beschikbaar ?? 0;
+    const pctVoorraad = beschikbaar > 0
+      ? ((overschotStuks / beschikbaar) * 100).toFixed(1) + '%'
+      : '—';
+    const pctKleur = beschikbaar > 0
+      ? (overschotStuks / beschikbaar > 0.7 ? '#ef4444' : overschotStuks / beschikbaar > 0.4 ? '#f59e0b' : '#22c55e')
+      : 'var(--muted)';
+
+    // absolute verkopen per markt
+    const nlVerk = r.verkopen_NL ?? 0;
+    const deVerk = r.verkopen_DE ?? 0;
+    const frVerk = r.verkopen_FR ?? 0;
+
+    return `<tr style="${rowStyle}">
       <td class="sku-cell">${r.sku ?? ''}</td>
-      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${(r.omschrijving?.length > 44 ? r.omschrijving.slice(0,44)+'…' : r.omschrijving) ?? ''}</td>
-      <td style="color:var(--muted)">${r.productgroep ?? ''}</td>
-      <td class="val-cell" style="text-align:right">${fmt(r.totaalwaarde_overschot)}</td>
-      <td style="text-align:right">${(r.verwacht_overschot_stuks ?? 0).toLocaleString('nl-NL')}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${omschr}">${omschrShort}</td>
+      <td style="color:var(--muted);white-space:nowrap">${pg}</td>
+      <td style="text-align:right;color:var(--muted)">${beschikbaar.toLocaleString('nl-NL')}</td>
+      <td style="text-align:right">${overschotStuks.toLocaleString('nl-NL')}</td>
+      <td class="val-cell" style="text-align:right">${fmt(overschotWaarde)}</td>
+      <td style="text-align:right;font-weight:500;color:${pctKleur}">${pctVoorraad}</td>
+      ${trendCell(r)}
       <td style="text-align:right">${r.aaneengesloten_weken_overschot ?? ''}</td>
-      <td style="text-align:right">${(r.aandeel_NL_pct ?? 0).toFixed(0)}%</td>
-      <td style="text-align:right">${(r.aandeel_DE_pct ?? 0).toFixed(0)}%</td>
+      <td style="text-align:right;${nlVerk === 0 ? 'color:var(--muted)' : ''}">${nlVerk}</td>
+      <td style="text-align:right;${deVerk === 0 ? 'color:var(--muted)' : ''}">${deVerk}</td>
+      <td style="text-align:right;${frVerk === 0 ? 'color:var(--muted)' : ''}">${frVerk}</td>
       <td><span class="badge badge-${r_}">${r_}</span></td>
     </tr>`;
   }).join('');
